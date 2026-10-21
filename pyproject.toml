@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "secure-linux-ai"
+version = "0.4.0"
+description = "Policy-gated, evidence-producing operations assistant for Linux hosts, with an MCP front-end."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = ["linux", "operations", "security", "policy", "audit", "mcp"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: System Administrators",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: System :: Systems Administration",
+]
+
+# No version is pinned here on purpose: an unpinned security tool drifts from
+# its test matrix, so CI installs these same ranges and the matrix is the guard.
+dependencies = [
+  "psutil>=6.0.0",
+  "python-dotenv>=1.0.0",
+  "google-genai>=1.0.0",
+  "typer>=0.12.0",
+  "rich>=13.0.0",
+  "pyyaml>=6.0",
+  "cryptography>=42.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.6"]
+
+[project.scripts]
+ssm = "main:app"
+ssm-mcp = "mcp_server:main"
+ssm-console = "console:main"
+
+[project.urls]
+Homepage = "https://github.com/Jyothirmayi13/linux-ai-ssm"
+Changelog = "https://github.com/Jyothirmayi13/linux-ai-ssm/blob/main/CHANGELOG.md"
+Security = "https://github.com/Jyothirmayi13/linux-ai-ssm/blob/main/SECURITY.md"
+
+# The modules are flat top-level files, so they are listed explicitly rather
+# than discovered - which also keeps run_tests.py out of a production install.
+[tool.setuptools]
+packages = ["linux"]
+py-modules = [
+  "approval",
+  "audit",
+  "console",
+  "conversation",
+  "evidence",
+  "gateway",
+  "llm",
+  "main",
+  "mcp_server",
+  "policy",
+  "providers",
+  "risk_engine",
+  "tools",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+# Only rules that find defects, not rules that rewrite working code: E9 is a
+# syntax error and F is an unused or undefined name. A lint gate that spends CI
+# minutes restyling is a gate that gets switched off.
+[tool.ruff.lint]
+select = ["E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# T01 imports every public name on purpose, to prove the modules still resolve;
+# ruff cannot see that an unused import is itself the assertion.
+"run_tests.py" = ["F401", "F841"]

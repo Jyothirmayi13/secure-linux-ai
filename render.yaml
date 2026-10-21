@@ -1,0 +1,19 @@
+# The deployed auditor, as one free web service.
+#
+# This file is the start command's other copy: `python deploy/make_auditor.py
+# --check` fails if it drifts from `auditor-service/Procfile`, if it names
+# anything but report mode, or if it points anywhere but the generated
+# directory. Render reads it from the repository root, so it cannot live inside
+# `auditor-service/` with the rest of the service.
+services:
+  - type: web
+    name: ssm-auditor
+    runtime: python
+    plan: free
+    rootDir: auditor-service
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app/console.py --serve-reports --bind 0.0.0.0 --port $PORT --uploads ./uploads
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"

@@ -1,0 +1,291 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: Tracked-file hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The runner image's bare `python` is not something to assume in a job that
+      # parses files with it, so pin an interpreter before using it.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Refuse a tracked .env, venv, ledger or evidence export
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re, subprocess, sys
+          tracked = subprocess.run(
+              ["git", "ls-files"], capture_output=True, text=True
+          ).stdout.splitlines()
+          pattern = r"^\.env$|^\.venv/|^approvals\.sqlite3$|^audit\.sqlite3$|^evidence-.*\.json$"
+          bad = [p for p in tracked if re.match(pattern, p)]
+          if bad:
+              sys.exit(f"these must never be tracked: {bad}")
+          print(f"clean: {len(tracked)} tracked files, no secrets or local state")
+          PY
+
+  suite:
+    name: ${{ matrix.os }} / Python ${{ matrix.py }}
+    needs: guard
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        py: ["3.10", "3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.py }}
+          allow-prereleases: true
+
+      - name: Install
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Test suite
+        shell: bash
+        run: python run_tests.py
+
+      - name: MCP protocol self-check
+        shell: bash
+        run: python mcp_server.py --check
+
+      # --policy-check screens a command string; --policy-lint and --policy-show
+      # are the tools that read a policy file. Feeding a path to the former asks
+      # the gateway to judge the literal text "policy.yaml", which is not in the
+      # allow-list, so the step failed for a reason that had nothing to do with
+      # the package it was meant to be proving.
+      - name: Installed console commands
+        shell: bash
+        run: |
+          ssm --policy-lint --policy policy.yaml
+          ssm --policy-show
+          ssm --policy-check "df -h"
+          ssm --evidence-show
+          ssm --approval-list
+
+      # The web console is the one part of this project that could become a
+      # network service, so CI proves the rule that keeps it out of that role:
+      # this host's live ledger binds to loopback or not at all. Exit 2 is the
+      # console's own refusal, and the refusal has to name the mode that is
+      # safe to deploy instead of failing silently.
+      - name: Web console refuses a routable bind on the live ledger
+        shell: bash
+        run: |
+          code=0
+          out="$(ssm-console --bind 10.9.8.7 --port 1 2>&1)" || code=$?
+          printf '%s\n' "$out"
+          if [ "$code" -ne 2 ]; then
+            echo "a routable live bind exited $code, expected the refusal (2)" >&2
+            exit 1
+          fi
+          case "$out" in
+            *"refusing to serve the live ledger"*) ;;
+            *) echo "the refusal did not explain itself" >&2; exit 1 ;;
+          esac
+          case "$out" in
+            *"--serve-reports"*) ;;
+            *) echo "the refusal did not name the deployable mode" >&2; exit 1 ;;
+          esac
+
+      # The deployed auditor service is a directory of copied modules. This
+      # proves it is still byte-identical to what this repository generates, and
+      # that it contains no executor, so the deployed tree cannot quietly grow a
+      # capability the reviewer was never told about.
+      - name: Deployed auditor service is the viewer and nothing more
+        shell: bash
+        run: |
+          code=0
+          out="$(python deploy/make_auditor.py --check 2>&1)" || code=$?
+          printf '%s\n' "$out"
+          if [ "$code" -ne 0 ]; then
+            echo "auditor-service/ no longer matches console.py's imports, or has drifted from its sources" >&2
+            exit 1
+          fi
+          case "$out" in
+            *"checks pass"*) ;;
+            *) echo "the service check did not report what it verified" >&2; exit 1 ;;
+          esac
+          for absent in main.py mcp_server.py tools.py llm.py conversation.py; do
+            if [ -e "auditor-service/app/$absent" ]; then
+              echo "auditor-service/app/$absent should not exist" >&2; exit 1
+            fi
+          done
+
+      # A CI runner has no model key and no .env, so provider selection must
+      # refuse: exit 2, and the refusal must state that nothing was sent. Exit 0
+      # here would mean the tool found an endpoint nobody configured, which is
+      # the exact failure this command exists to make visible.
+      - name: Provider selection fails closed without a key
+        shell: bash
+        run: |
+          # `|| code=$?` is not decoration. GitHub runs a bash step with -e, so a
+          # bare `out="$(cmd)"` on a command that exits 2 aborts the step right
+          # there and the assertions below never run.
+          code=0
+          out="$(ssm --provider-show 2>&1)" || code=$?
+          printf '%s\n' "$out"
+          if [ "$code" -eq 0 ]; then
+            echo "a keyless runner resolved a model endpoint" >&2
+            exit 1
+          fi
+          if [ "$code" -ne 2 ]; then
+            echo "--provider-show exited $code, expected the no-key refusal (2)" >&2
+            exit 1
+          fi
+          case "$out" in
+            *"Nothing was sent"*) ;;
+            *) echo "the refusal did not say so" >&2; exit 1 ;;
+          esac
+          echo "provider: no key, no endpoint, refusal stated out loud"
+
+      - name: Lint
+        shell: bash
+        run: ruff check .
+
+      - name: Fail closed
+        shell: bash
+        env:
+          HOME: ${{ runner.temp }}/ssm-home
+          USERPROFILE: ${{ runner.temp }}/ssm-home
+          PYTHONUTF8: "1"
+        run: |
+          mkdir -p "$HOME"
+          python - <<'PY'
+          import subprocess, sys
+
+          def run(*args, expect=None):
+              proc = subprocess.run([sys.executable, "main.py", *args],
+                                    capture_output=True, text=True)
+              if expect is not None and proc.returncode != expect:
+                  sys.exit(f"{args} -> exit {proc.returncode}\n"
+                           f"{proc.stdout}\n{proc.stderr}")
+              return proc
+
+          # Exit 1 is the policy linter saying no. Exit 0 would mean a broken or
+          # weakening file became the effective policy.
+          with open("broken.yaml", "w", encoding="utf-8") as fh:
+              fh.write("deny_commands: [\n")
+          run("--policy", "broken.yaml", "--policy-lint", expect=1)
+
+          with open("weaken.yaml", "w", encoding="utf-8") as fh:
+              fh.write('approval:\n  mode: "off"\n')
+          run("--policy", "weaken.yaml", "--policy-lint", expect=1)
+
+          with open("loose.yaml", "w", encoding="utf-8") as fh:
+              fh.write('approval:\n  ttl_seconds: 999999\n')
+          run("--policy", "loose.yaml", "--policy-lint", expect=1)
+
+          print("fail closed: unparsable policy, mode off, over-long TTL")
+          PY
+
+      - name: Approval lifecycle
+        shell: bash
+        env:
+          HOME: ${{ runner.temp }}/ssm-home
+          USERPROFILE: ${{ runner.temp }}/ssm-home
+          PYTHONUTF8: "1"
+        run: |
+          mkdir -p "$HOME"
+          python - <<'PY'
+          import os, re, subprocess, sys
+
+          def run(args, expect=0, stdin=None):
+              proc = subprocess.run([sys.executable, "main.py", *args],
+                                    capture_output=True, text=True, input=stdin)
+              if proc.returncode != expect:
+                  sys.exit(f"{args} -> exit {proc.returncode}\n"
+                           f"{proc.stdout}\n{proc.stderr}")
+              return proc.stdout
+
+          # Only allow-listed, read-only commands can be approved at all, so the
+          # probe is one of those. Whether its binary exists on this runner is
+          # beside the point: either outcome must still leave the token dead.
+          probe = "df -h"
+
+          opened = run(["--request-approval", probe])
+          request_id = re.search(r"req-[A-Za-z0-9]+", opened).group()
+
+          run(["--approve", request_id, "--token-out", "approval.token"],
+              stdin="y\n")
+          shown = run(["--approval-show", "@approval.token"])
+          if "True" not in shown:
+              sys.exit(f"the minted token did not verify:\n{shown}")
+
+          # Whether the probe binary exists is platform-dependent; both outcomes
+          # are legitimate, and neither may be allowed to leave the token live.
+          run(["--execute", "@approval.token"])
+          again = subprocess.run([sys.executable, "main.py", "--execute",
+                                  "@approval.token"], capture_output=True, text=True)
+          joined = again.stdout + again.stderr
+          if "redeemed" not in joined:
+              sys.exit(f"a spent token was redeemable a second time:\n{joined}")
+
+          os.remove("approval.token")
+          print("approval: requested, human-minted, inspected, spent once, replay refused")
+          PY
+
+      - name: Evidence exports verify with no database present
+        shell: bash
+        env:
+          HOME: ${{ runner.temp }}/ssm-home
+          USERPROFILE: ${{ runner.temp }}/ssm-home
+          PYTHONUTF8: "1"
+        run: |
+          mkdir -p "$HOME"
+          python - <<'PY'
+          import shutil, subprocess, sys
+          from pathlib import Path
+
+          run = subprocess.run
+          run([sys.executable, "main.py", "--report", "--out", "evidence-export.json"],
+              check=True, capture_output=True, text=True)
+
+          # The verifier must not need this host's key, database or identity.
+          shutil.rmtree(Path.home() / ".local" / "state" / "linux-ai-ssm",
+                        ignore_errors=True)
+
+          out = run([sys.executable, "main.py", "--report-verify",
+                     "evidence-export.json"], capture_output=True, text=True)
+          print(out.stdout[-800:])
+          # The verdict word alone is not a safe assertion: "NOT TRUSTED"
+          # contains "TRUSTED". Exit code 2 is the tool's own rejection, and
+          # either verdict wording (TRUSTED / AUTHENTIC) is a pass, because a
+          # job that ran the lifecycle first may legitimately export unsigned
+          # rows from an older ledger.
+          if out.returncode != 0 or "NOT TRUSTED" in out.stdout:
+              sys.exit(f"an exported report stopped verifying: "
+                       f"exit {out.returncode}\n{out.stdout}\n{out.stderr}")
+          print("evidence: exported report verifies with the local state deleted")
+          PY
+
+      - name: Wheel build and non-editable install
+        shell: bash
+        run: |
+          python -m pip install --upgrade build
+          python -m build --wheel
+          python -m pip install --no-deps --force-reinstall dist/*.whl
+          ssm --policy-lint
+          ssm-mcp --check
+          ssm-console --help
