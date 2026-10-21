@@ -60,7 +60,7 @@ row of that table, on Windows and Linux.
 
 Open a **private security advisory**:
 
-`https://github.com/Jyothirmayi13/linux-ai-ssm/security/advisories/new`
+`https://github.com/Jyothirmayi13/secure-linux-ai/security/advisories/new`
 
 Do not file a public issue. Expected first response within 7 days; a fix or a
 written disagreement within 30. Include the output of `ssm --policy-show` and

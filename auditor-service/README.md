@@ -1,7 +1,7 @@
 # Evidence Report Verifier
 
 A read-only viewer for the signed evidence reports produced by
-[linux-ai-ssm](https://github.com/Jyothirmayi13/linux-ai-ssm), a policy-gated
+[secure-linux-ai](https://github.com/Jyothirmayi13/secure-linux-ai), a policy-gated
 gateway that lets an AI assistant ask to run read-only Linux commands and
 records every decision — including every refusal — in a hash-chained audit
 ledger signed by the host.

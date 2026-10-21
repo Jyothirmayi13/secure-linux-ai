@@ -40,9 +40,9 @@ ssm-mcp = "mcp_server:main"
 ssm-console = "console:main"
 
 [project.urls]
-Homepage = "https://github.com/Jyothirmayi13/linux-ai-ssm"
-Changelog = "https://github.com/Jyothirmayi13/linux-ai-ssm/blob/main/CHANGELOG.md"
-Security = "https://github.com/Jyothirmayi13/linux-ai-ssm/blob/main/SECURITY.md"
+Homepage = "https://github.com/Jyothirmayi13/secure-linux-ai"
+Changelog = "https://github.com/Jyothirmayi13/secure-linux-ai/blob/main/CHANGELOG.md"
+Security = "https://github.com/Jyothirmayi13/secure-linux-ai/blob/main/SECURITY.md"
 
 # The modules are flat top-level files, so they are listed explicitly rather
 # than discovered - which also keeps run_tests.py out of a production install.
