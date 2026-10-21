@@ -69,5 +69,5 @@ python app/console.py --serve-reports --bind 127.0.0.1 --port 8080
 ```
 
 Source, tests and the verification spec:
-[github.com/Jyothirmayi13/linux-ai-ssm](https://github.com/Jyothirmayi13/linux-ai-ssm)
+[github.com/Jyothirmayi13/secure-linux-ai](https://github.com/Jyothirmayi13/secure-linux-ai)
 (`console.py`, `evidence.py`, `deploy/auditor/`).
