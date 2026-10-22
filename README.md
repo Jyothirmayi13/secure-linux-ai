@@ -1,4 +1,5 @@
 # Secure Linux AI
+[![tests](https://github.com/Jyothirmayi13/secure-linux-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Jyothirmayi13/secure-linux-ai/actions/workflows/ci.yml)
 
 A security-gated Linux operations assistant.
 
