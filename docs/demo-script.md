@@ -162,24 +162,29 @@ ssm --void-approval <remaining request id>
 ## Step 7 — export, then verify on a host that has forgotten everything
 
 ```bash
-ssm --report --out /tmp/run-report.json --note "recorded run, <hostname>, <date>" --last 24
+ssm --report --out /tmp/run-report.json --note "recorded run, <hostname>, <date>"
 ssm --report-verify /tmp/run-report.json      # TRUSTED, while state is still here
 ```
 
-Now remove the host's memory. **Move it, do not delete it** — the state directory
-holds the signing key and the ledger, and deleting it destroys the evidence the
-run just produced:
+No `--last`: a window reports how many earlier rows it left out, and a complete
+chain from row 1 is the stronger artefact. Put the context in `--note` rather than
+in the filename — the note sits inside the signed core, so it is authenticated
+rather than typed.
+
+Now take it away from the host that wrote it. Do **not** move or delete the real
+state directory — it holds the signing key and the ledger, and a `mv` onto a path
+the tool has already recreated lands the whole thing one level too deep. Run the
+verifier with `HOME` pointing somewhere empty instead. That is the same claim,
+reversibly:
 
 ```bash
-mv ~/.local/state/linux-ai-ssm /tmp/state-parked
-ssm --report-verify /tmp/run-report.json      # still TRUSTED
-mv /tmp/state-parked ~/.local/state/linux-ai-ssm
+rm -rf /tmp/other-host                       # only ever this scratch directory
+HOME=/tmp/other-host ssm --report-verify /tmp/run-report.json   # still TRUSTED
 ```
 
-That is the claim in one line: the report carries its own public key, so
-verification needs the file and nothing else. Put the `--note` in the report
-rather than a filename — the note is inside the signed core, so it is
-authenticated rather than typed.
+`/tmp/other-host` is a machine that has never seen this project: no identity, no
+`audit.sqlite3`, no `approvals.sqlite3`. The verifier reads none of them, because
+the document carries its own public key.
 
 ## Step 8 — someone else verifies it in a browser
 

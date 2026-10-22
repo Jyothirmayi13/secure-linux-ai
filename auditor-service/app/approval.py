@@ -309,6 +309,17 @@ def _brief_decision(decision: dict) -> dict:
     }
 
 
+def _requester_kind(requested_by: str) -> str:
+    """The plane a request arrived on, ignoring which client named itself.
+
+    The MCP facade decorates this field with the connecting client ("mcp via
+    Qoder") so the ledger says who asked, not merely how. Strict mode gates on
+    the plane, so it reads the leading word; anything that is not ``cli`` or
+    ``mcp`` stays unknown and stays refused.
+    """
+    return requested_by.split(maxsplit=1)[0].lower() if requested_by.strip() else ""
+
+
 def request_approval(
     subject: str,
     policy: Any,
@@ -333,7 +344,7 @@ def request_approval(
             f"command is longer than {SUBJECT_MAX_CHARS} characters; approvals "
             "cover one short, reviewable command"
         )
-    if mode_for(policy) == "strict" and requested_by not in ("cli", "mcp"):
+    if mode_for(policy) == "strict" and _requester_kind(requested_by) not in ("cli", "mcp"):
         raise ApprovalError(f"unknown requester {requested_by!r}")
 
     decision = classify_command(cleaned, policy=policy)

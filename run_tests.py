@@ -2030,15 +2030,22 @@ def run_all_tests():
             assert not hasattr(mcp_module.McpGatewayServer, method), method
         assert set(server.control_handlers) <= set(CONTROL_TOOLS)
 
+        # A real client names itself at initialize, and the facade decorates the
+        # requester field with that name. Strict mode gates on the plane the
+        # request arrived on, so it has to read "mcp" out of "mcp via unit-client"
+        # rather than compare the whole decorated label.
+        rpc(server, 10, "initialize", {"clientInfo": {"name": "unit-client"}})
         asked = json.loads(body(call(server, 11, "approval_request",
                                      {"command": "ls -la /var/log"})))
         assert asked["opened"] is True
-        assert asked["approval_mode"] == "interactive"
+        assert asked["approval_mode"] == shipped.approval_mode, (
+            f"the facade reported {asked['approval_mode']!r} while the policy in "
+            f"force says {shipped.approval_mode!r}")
         assert asked["decision"]["category"] == "LOW"
         row = state.approvals.get(request_id=asked["request_id"])
         assert row["state"] == "open", "an agent advanced its own approval"
         assert row["token_sha"] == "", "an agent minted a token"
-        assert row["requested_by"].startswith("mcp")
+        assert row["requested_by"] == "mcp via unit-client", row["requested_by"]
         assert dict(approval_ladder(shipped))["who can mint"].startswith("a human")
 
         # Asking again opens another request; it does not spend anything.

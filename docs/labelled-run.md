@@ -20,7 +20,7 @@ The scenario below is the one this project is assessed against, quoted as given:
 
 Each clause is its own case, because each one can fail alone.
 
-## R-01 — host: `<hostname>`, OS: `<distro + version>`, date: `<YYYY-MM-DD>`, run by: `<name>`
+## R-01 — host: `RAVI`, OS: Ubuntu 26.04.1 LTS under WSL on Windows, date: 2026-10-22, run by: Jyothirmayi
 
 | # | Specified input | Expected result | Actual result | Evidence |
 |---|---|---|---|---|
@@ -32,23 +32,35 @@ Each clause is its own case, because each one can fail alone.
 | 6 | `ssm --execute @/tmp/approved.tok` again | Refused: `this approval is redeemed, so it cannot be redeemed. A token buys one execution, and this one has already spent it.` Nothing runs | | |
 | 7 | One character edited near the end of a minted token, then spent | Refused as a signature or payload-integrity failure. Ledger row still `minted` — not consumed | | |
 | 8 | Token minted with `--approval-ttl 20`, spent after 25 s | Refused: `this approval expired at <iso>; consent that ran out is not consent`. Row still `minted` | | |
-| 9 | `ssm --report --out /tmp/run-report.json --note "…" --last 24`, then `ssm --report-verify` | `TRUSTED`, chain recomputes, every row signed | | |
-| 10 | State directory moved away, `ssm --report-verify /tmp/run-report.json` | Still `TRUSTED` — the document carries its own public key and reads no local state | | |
-| 11 | Upload the report to the deployed auditor | `TRUSTED` verdict page at `/r/<id>` | | |
-| 12 | Upload a copy with one row's `status` edited | `NOT TRUSTED`, with the failing rows named | | |
+| 9 | Export the full chain, then verify it locally | `TRUSTED`, chain recomputes, every row signed | **Done 2026-10-22.** `python3 main.py --report --out "/mnt/c/Users/Ravi kumar/Downloads/run-report.json" --note "host RAVI (WSL), audit history through 2026-10-19, exported 2026-10-22"`, then `--report-verify` on the same file → `TRUSTED`. No `--last`, so the report is the complete history rather than a window | 24 events, 24 signed, 0 unsigned; host `RAVI` `sha256:c8fdb35c2b280c22558a99ea35da1515`; policy `default` `sha256:11bb409abe0c2b39e07f648eb8b99b79e8089e7858ec82b5ffe939110de4c268` |
+| 10 | `HOME=/tmp/other-host ssm --report-verify …`, a home with no identity and no ledgers | Still `TRUSTED` — the document carries its own public key and reads no local state | | |
+| 11 | Upload the report to the deployed auditor | `TRUSTED` verdict page at `/r/<id>` | **Done 2026-10-22.** `TRUSTED`, read back independently by a second person over plain HTTPS with no login and no access to the host that made it | `https://ssm-auditor.onrender.com/r/a48272e9b802424f86fc1c9795e3e38f` |
+| 12 | Upload a copy with one row's `status` edited | `NOT TRUSTED`, with the failing rows named | **Done 2026-10-22.** `NOT TRUSTED`, two failures listed and neither summarised: `event 1: event_hash does not match its own contents (edited row, id 1)` and `the document signature does not validate: this file was changed after it was exported`. Host, policy fingerprint and note are identical to row 11, so the only difference between the two pages is one edited field | `https://ssm-auditor.onrender.com/r/029241d4ab314ab19eeb71144c296403` |
 | 13 | `python run_tests.py` / `python mcp_server.py --check` / `ruff check .` on this host | `<N>/64`, `<N>/19`, clean | | |
 
 Steps 7, 8 and 10 are the three most often skipped and the three that carry the
 argument. Do not let a run count as complete without them.
 
+**R-01 status as of 2026-10-22:** rows 9, 11 and 12 are done and evidenced above.
+Rows 1–8, 10 and 13 have not been performed on this host and are deliberately
+left blank — an empty cell means the run has not happened, not that it passed.
+The host is recorded as `Ubuntu 26.04.1 LTS` from `lsb_release -ds` on
+`RAVI`, and `ssm` resolves to `.venv/bin/ssm`, so the CLI rows below are run as
+`ssm …`. What is still to capture is row 10, the one that proves verification
+needs nothing but the file.
+
 ## Differences already known — state these, do not quietly correct them
 
 - **64 tests, not 58.** The suite grew past the number in the brief. Report the
   count this host actually prints, which is out of 64.
-- **`ubuntu-latest`, not a pinned 26.04.** `.github/workflows/ci.yml` declares the
-  matrix as `os: [ubuntu-latest, windows-latest]` × Python `3.10 / 3.13 / 3.14`.
-  The runner image line in any job log is the only authority on which Ubuntu that
-  was on the day; read it before repeating a version number.
+- **`ubuntu-latest`, not a pinned 26.04, in CI.** `.github/workflows/ci.yml`
+  declares the matrix as `os: [ubuntu-latest, windows-latest]` × Python
+  `3.10 / 3.13 / 3.14`. The runner image line in any job log is the only
+  authority on which Ubuntu that was on the day; read it before repeating a
+  version number. The interactive run in R-01 is a separate fact and a stronger
+  one: its host reports `Ubuntu 26.04.1 LTS` from `lsb_release -ds`, so the
+  "Ubuntu 26.04" in the brief is true of the machine the agent was used on, and
+  `ubuntu-latest` is what CI promised.
 - **The local-model path is stub-verified.** The OpenAI-compatible provider
   (Ollama, LM Studio, vLLM) is tested against a local stub, not a real Ollama
   server. Say it that way.
@@ -63,6 +75,13 @@ argument. Do not let a run count as complete without them.
 - **`auditor-service/Dockerfile` has not been built.** Until someone builds it, it
   is an untested artefact, not a deployment option. See Round D of
   `docs/verification-rounds.md`.
+- **Verdict pages are temporary.** Uploads land on the free instance's
+  container-local disk, so an id disappears when that container is replaced: a
+  page that served `TRUSTED` on 2026-10-21 returned `404` on 2026-10-22, while
+  the two ids above were still `200` when checked at 09:55 IST on 2026-10-22. The
+  signed file is the evidence; the URL is a convenience. Re-open both links
+  immediately before relying on them, and keep `run-report.json` itself as the
+  artefact.
 
 ## R-02 onward — one record per machine, per person
 

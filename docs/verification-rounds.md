@@ -49,8 +49,8 @@ own Ed25519 identity, so the report you export is signed by a key that has never
 touched anyone else's system, and it still verifies.
 
 Fill in the R-0x table in `docs/labelled-run.md` from what you actually saw. Steps
-7, 8 and 10 (edited token, expired token, verify with the state directory moved
-away) are the ones that are easy to skip and hard to reconstruct later.
+7, 8 and 10 (edited token, expired token, verify with `HOME` pointed at an empty
+directory) are the ones that are easy to skip and hard to reconstruct later.
 
 ## Round C — the cross-host refusal (needs two people, two machines)
 
