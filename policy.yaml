@@ -1,0 +1,117 @@
+# ---------------------------------------------------------------------------
+# policy.yaml — the operator-written rules for the security gateway.
+#
+# This file can only ADD restrictions. The deny-by-default floor in
+# risk_engine.py (read-only allow-list, destructive/network/interpreter
+# blocks, shell-composition blocks, credential paths) is not configurable,
+# so a typo here cannot open a hole.
+#
+# If this file is missing, unparseable, contains an unknown setting, or
+# tries to weaken the floor, the gateway FAILS CLOSED: every request is
+# blocked and nothing runs until the file is fixed.
+#
+# Check it at any time:
+#   python main.py --policy-lint
+#   python main.py --policy-show
+#   python main.py policy check "rm -rf /var/log"
+# ---------------------------------------------------------------------------
+
+version: 1
+name: default
+
+# Extra read-only executables, on top of the built-in allow-list. These are
+# diagnostics only — protected names such as rm, sudo, curl, sh or python are
+# rejected at load time.
+allow_executables:
+  - vmstat
+  - iostat
+  - sar
+  - lsof
+  - netstat
+  - hostnamectl
+
+# Take away access that the floor would otherwise permit.
+deny_executables: []
+
+# Substrings that hard-block a command or tool path. Credential locations are
+# already blocked by the floor; add site-specific ones here.
+deny_paths:
+  - /.aws/credentials
+  - /.kube/config
+  - /etc/ssl/private
+  - /var/lib/mysql
+
+# Exact arguments to reject anywhere in a command line.
+deny_arguments: []
+
+# Named rules. Each is a regular expression tested against the command after
+# obfuscation-decoding, and the rule id is written into the audit trail so you
+# can prove which line of this file stopped a request.
+rules:
+  - id: protect-audit-trail
+    pattern: 'audit\.sqlite3'
+    reason: the audit trail is evidence, not an inspection target
+
+  - id: no-full-filesystem-scan
+    pattern: '^\s*find\s+/(\s|$)'
+    reason: scanning / trips thousands of permission errors and hogs I/O; name a directory
+
+# Extra prompt-injection patterns for the pre-model screen.
+injection_patterns:
+  - id: asks-for-gateway-bypass
+    pattern: '(?:disable|turn off|skip)\s+(?:the\s+)?(?:gateway|policy|guard|risk)'
+    reason: requests to disable the boundary are not diagnostic questions
+
+# Anything scoring above this is blocked outright instead of asked about.
+# Set it to 80 to auto-refuse every HIGH-risk command.
+max_score: 100
+
+# Turn true to block HIGH-risk reads (for example /root listings) rather than
+# prompting the human.
+block_sensitive: false
+
+# Directories the diagnostic tools may read. This REPLACES the built-in list,
+# so keep it deliberate; the credential deny paths above always apply on top.
+read_roots:
+  - /var/log
+  - /etc
+  - /home
+  - /tmp
+  - .
+
+# Every execution carries a signed, single-use human approval. This section can
+# only make that stricter: mode 'off' is refused, because the requirement is
+# part of the built-in floor and not a preference.
+#
+#   interactive  you approve at the same terminal that runs the command, in one
+#                press, and the approval still becomes a signed one-shot token
+#   strict       the process that runs a command may not be the process that
+#                approved it: request in one terminal, a human signs with
+#                --approve, and a separate --execute run spends the token
+#
+# ttl_seconds shortens how long an approval stays spendable (1-120 here, and a
+# 900 second ceiling in the code no policy can raise). The approval is bound to
+# the exact command bytes, this host's key id, this actor and this policy
+# fingerprint, so editing the command, changing machine or changing policy
+# invalidates it rather than silently reusing it.
+approval:
+  mode: interactive
+  ttl_seconds: 120
+
+tech_mode:
+  enabled: true
+  max_suggestions: 3
+
+# Where the AI runs. This belongs to the security boundary rather than to the
+# vendor choice: a diagnosis sends your question and the contents of local
+# files to whichever endpoint answers. Uncomment to pin it; an environment
+# variable that disagrees with the policy is refused, never resolved by guessing.
+#
+# ai:
+#   provider: ollama                 # gemini | openai | ollama
+#   model: qwen2.5-coder:7b
+#   base_url: http://127.0.0.1:11434/v1
+#   allow_cloud: false               # false = loopback endpoints only
+#
+# Confirm what was decided without making a model call:
+#   python main.py --provider-show
