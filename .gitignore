@@ -224,6 +224,10 @@ __marimo__/
 evidence-*.json
 *report*.json
 
+# The review sample is the deliberate exception: signed by a throwaway test
+# host key over synthetic rows, so it carries none of this machine's history.
+!samples/sample-report.json
+
 # The deployed auditor service directory is generated and tracked; what it
 # writes at runtime is not. Reports uploaded to it are somebody else's command
 # history.
