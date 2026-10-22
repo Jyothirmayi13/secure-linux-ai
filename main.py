@@ -68,6 +68,16 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
     help="A security-gated Linux operations assistant.",
+    epilog=(
+        "Start with a sentence, not a command:\n\n"
+        '    ai "why is my laptop getting heated?"\n'
+        '    ai --tech "why is my laptop getting heated?"\n\n'
+        "Normal mode reads the host and answers in plain words. Tech mode "
+        "proposes the commands, describes each one, and runs only what you "
+        "approve at the prompt. Every reading and every decision is written "
+        "to a signed log, so the run can be proved later on a machine that "
+        "was not here for it: ai --report-verify."
+    ),
 )
 
 console = Console()
@@ -1432,33 +1442,35 @@ def main(
     """
     Security-gated Linux operations assistant.
 
-    Normal mode:
-        main.py "why is my system slow?"
+    Two ways to use it. You type a sentence, not a command.
 
-    Tech mode:
-        main.py --tech "show disk usage"
-        main.py tech "show disk usage"
+    Normal mode - read only. The model asks the gateway for each reading:
+        ai "why is my laptop getting heated?"
 
-    Policy:
-        main.py --policy-check "rm -rf /var/log"
-        main.py --policy-show
-        main.py --policy prod.yaml --policy-check "journalctl -xe"
+    Tech mode - it proposes the commands and describes them. One press at the
+    prompt approves, signs and spends a single-use approval, then runs:
+        ai --tech "why is my laptop getting heated?"
 
-    Where the model runs:
-        main.py --provider-show
+    Those two are the operator's whole surface. The rest belongs to other seats.
 
-    Approval (a signed, single-use token binds a human yes to exact bytes):
-        main.py --request-approval "df -h"
-        main.py --approve req-1a2b3c4d
-        main.py --approval-list
-        main.py --approval-show @token.txt
-        main.py --void-approval req-1a2b3c4d
-        main.py --execute @token.txt
+    An approver, in another terminal, when the request came from an agent:
+        ai --request-approval "df -h"
+        ai --approve req-1a2b3c4d --token-out approval.token
+        ai --approval-list
+        ai --approval-show @approval.token
+        ai --void-approval req-1a2b3c4d
+        ai --execute @approval.token
 
-    Evidence:
-        main.py --evidence-show
-        main.py --report --last 24 --out evidence.json
-        main.py --report-verify evidence.json
+    An auditor, or CI, checking a decision without making one:
+        ai --policy-check "rm -rf /var/log"
+        ai --policy-show
+        ai --policy prod.yaml --policy-check "journalctl -xe"
+        ai --provider-show
+        ai --evidence-show
+
+    The record itself:
+        ai --report --last 24 --out evidence.json
+        ai --report-verify evidence.json
     """
 
     # Handle API key reset if requested.

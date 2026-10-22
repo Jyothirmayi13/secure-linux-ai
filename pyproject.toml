@@ -35,6 +35,10 @@ dependencies = [
 dev = ["ruff>=0.6"]
 
 [project.scripts]
+ai = "main:app"
+
+# `ssm` stays installed because the Qoder connector config, the deployed auditor
+# and the teammate verification rounds all call it by that name.
 ssm = "main:app"
 ssm-mcp = "mcp_server:main"
 ssm-console = "console:main"
